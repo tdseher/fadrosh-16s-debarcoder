@@ -3,9 +3,9 @@
 # Copyright (c) 2015 Thaddeus D. Seher (@tdseher). All rights reserved.
 
 # Define imports
+from io import TextIOWrapper
 import sys
 import argparse
-import string
 
 # Define global variables
 __author__ = "Thaddeus D. Seher"
@@ -29,12 +29,12 @@ Copyright (c) {__date__} {__author__} ({__twitter__}). All rights reserved. \
 # 3) require strict matching in barcode+spacer
 #    but allow the primer to have mismatches
 
-def revcomp(dna):
+def revcomp(dna: str) -> str:
     """Returns the reverse-complement of a string containing DNA characters"""
-    complements = string.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
+    complements = str.maketrans('acgtrymkbdhvACGTRYMKBDHV', 'tgcayrkmvhdbTGCAYRKMVHDB')
     return dna.translate(complements)[::-1]
 
-def sequence_hamming_distance(first, second, max_differences):
+def sequence_hamming_distance(first: str, second: str, max_differences: float) -> int | None:
     """Counts number of differences between two sequences. Both sequences
     are left-justified, and measured along the length of the first sequence
     only."""
@@ -54,7 +54,7 @@ def sequence_hamming_distance(first, second, max_differences):
         else:
             return differences
 
-def ambiguous_hamming_distance(first, second, max_differences):
+def ambiguous_hamming_distance(first: str, second: str, max_differences: float) -> int | None:
     """Counts number of differences between two sequences. Both sequences
     are left-justified, and measured along the length of the first sequence
     only. IUPAC ambiguity characters may be used."""
@@ -109,7 +109,7 @@ def ambiguous_hamming_distance(first, second, max_differences):
         else:
             return differences
 
-def assign_sequence(sequence, candidates, database, max_score=2):
+def assign_sequence(sequence: str, candidates: list[str], database: dict[str, int|None], max_score: float=2.0) -> int | None:
     """Attempt to pair the experimental sequence's barcode with its best
     candidate barcode. Returns the index of the best candidate. If input
     sequence has multiple best candidates, then return None."""
@@ -145,7 +145,7 @@ def assign_sequence(sequence, candidates, database, max_score=2):
         
     return match
 
-def load_parameters(path):
+def load_parameters(path: str) -> tuple[dict[str, list[float]], dict[str, list[list[str]]]]:
     """Parse the file that specifies the read1 and read2 barcodes, spacers,
     and primers as well as their alignment models"""
     # If N == whole number, then this is the number of mismatches allowed:
@@ -153,8 +153,8 @@ def load_parameters(path):
     # if 0 < N < 1, or a float, then this is the proportion if mismatches
     #  allowed. That is, if the sequence length is 10, and N = 0.2, then
     #  it may have at most 2 mismatches.
-    parameters = {}
-    barcodes = {}
+    parameters: dict[str, list[float]] = {}
+    barcodes: dict[str, list[list[str]]] = {}
     
     with open(path, 'r') as flo:
         for line in flo:
@@ -163,7 +163,7 @@ def load_parameters(path):
                 if not line.startswith("#"):
                     sline = line.split("\t")
                     try:
-                        par_list = map(float, sline[1:])
+                        par_list = list(map(float, sline[1:]))
                         parameters[sline[0]] =  par_list
                     except ValueError:
                         try:
@@ -173,22 +173,22 @@ def load_parameters(path):
     
     return parameters, barcodes
 
-def check_pair(quad1, quad2):
+def check_pair(quad1: list[str], quad2: list[str]) -> bool:
     """Tests if the headers in two FASTQ sequences match"""
     return (quad1[0].split(" ", 1)[0] == quad2[0].split(" ", 1)[0])
 
-def process_single(quad1, database1, database2, true=False, autofield=False):
+def process_single(quad1: list[str], database1: dict, database2: dict, true: bool=False, autofield: bool=False):
     """Debarcode merged reads, concatenating their barcode sequences and
     adding them to the headers"""
     
     # we assume all barcodes are the same length
     seq1 = quad1[1]
     query1 = seq1[:len(barcodes["1"][0][0])]
-    i1 = assign_sequence(query1, map(lambda x: x[0], barcodes["1"]), database1, parameters["1"][0])
+    i1 = assign_sequence(query1, [x[0] for x in barcodes["1"]], database1, parameters["1"][0])
     
     seq2 = revcomp(quad1[1])
     query2 = seq2[:len(barcodes["2"][0][0])]
-    i2 = assign_sequence(query2, map(lambda x: x[0], barcodes["2"]), database2, parameters["2"][0])
+    i2 = assign_sequence(query2, [x[0] for x in barcodes["2"]], database2, parameters["2"][0])
     
     if ((i1 != None) and (i2 != None)):
         barcode1 = barcodes["1"][i1][0]
@@ -238,7 +238,7 @@ def process_single(quad1, database1, database2, true=False, autofield=False):
         
     return [None, None], [None, None]
 
-def process_pair(quad1, quad2, database1, database2, true=False, autofield=False):
+def process_pair(quad1: list[str], quad2: list[str], database1: dict[str, int|None], database2: dict[str, int|None], true: bool=False, autofield: bool=False):
     """Debarcode the paired reads, concatenating their barcode sequences and
     adding them to the headers"""
     
@@ -247,10 +247,10 @@ def process_pair(quad1, quad2, database1, database2, true=False, autofield=False
     
     # we assume all barcodes are the same length
     query1 = quad1[1][:len(barcodes["1"][0][0])]
-    i1 = assign_sequence(query1, map(lambda x: x[0], barcodes["1"]), database1, parameters["1"][0])
+    i1 = assign_sequence(query1, [x[0] for x in barcodes["1"]], database1, parameters["1"][0])
     
     query2 = quad2[1][:len(barcodes["2"][0][0])]
-    i2 = assign_sequence(query2, map(lambda x: x[0], barcodes["2"]), database2, parameters["2"][0])
+    i2 = assign_sequence(query2, [x[0] for x in barcodes["2"]], database2, parameters["2"][0])
     
     #sys.stderr.write("      i1=" + str(i1) + "\n")
     #sys.stderr.write("  query1=" + query1 + "\n")
@@ -317,7 +317,7 @@ def process_pair(quad1, quad2, database1, database2, true=False, autofield=False
         
     return [None, None], [None, None]
 
-def format_new_header(header, barcode1, barcode2, autofield=False):
+def format_new_header(header: str, barcode1: str, barcode2: str, autofield: bool=False) -> str:
     split_header = header.split(" ")
     if (len(split_header) == 2):
         # Illumina format for second field in header
@@ -347,13 +347,15 @@ def format_new_header(header, barcode1, barcode2, autofield=False):
             return " ".join(split_header)
     
     if (header[-1] == ";"):
-        return header + "barcode=" + barcode1 + barcode2 + ";"
+        #return header + "barcode=" + barcode1 + barcode2 + ";"
+        return f"{header}barcode={barcode1}{barcode2};"
     elif (header[-1] == " "):
         return header + barcode1 + barcode2
     else:
-        return header + " " + barcode1 + barcode2
+        #return header + " " + barcode1 + barcode2
+        return f"{header} {barcode1}{barcode2}"
 
-def read_quad(flo):
+def read_quad(flo: TextIOWrapper) -> list[str]:
     """Read four lines--a sequence entry, or "quad"--from an open FASTQ file"""
     quad = []
     for line in flo:
@@ -374,7 +376,7 @@ def read_quad(flo):
 class RequireSameAction(argparse.Action):
     """Action to require "-o/--output", "-b/--bsp", and "-f/--fail" arguments
     to have the same number of entries as the "-i/--input" argument"""
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(self, parser, namespace, values: list[str], option_string=None) -> None:
         if (len(values) > 2):
             raise argparse.ArgumentError(self, 'expected 1 or 2 arguments')
         
@@ -388,7 +390,7 @@ class RequireSameAction(argparse.Action):
 
 class RequirePairAction(argparse.Action):
     """Action to require either 1 or 2 entries for "-i/--input" argument"""
-    def __call__(self, parser, namespace, values, option_string=None):
+    def __call__(self, parser, namespace, values: list[str], option_string=None) -> None:
         if (len(values) not in [1, 2]):
             raise argparse.ArgumentError(self, 'expected 1 or 2 arguments')
         
@@ -397,14 +399,14 @@ class RequirePairAction(argparse.Action):
         #except NotImplementedError:
         setattr(namespace, self.dest, values)
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """Creates the argument parser and stores positional parameters"""
     
     # Create the argument parser
     parser = argparse.ArgumentParser(
         description=__description__,
-        epilog='',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        epilog=''
+        #formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     
     # Add mandatory arguments
@@ -462,7 +464,7 @@ def parse_arguments():
     
     return args
 
-def main():
+def main() -> None:
     """Run the program"""
     
     # load arguments and parse them
@@ -475,31 +477,31 @@ def main():
     # create dictionary lookup-tables to store barcode's best matches
     # each sequence read in will first be compared to the dictionary's keys
     # so that a full alignment can be skipped if it has already been hashed.
-    database1 = {}
-    database2 = {}
+    database1: dict[str, int|None] = {}
+    database2: dict[str, int|None] = {}
     
     # open input filehandles
-    flo_in = []
+    flo_in: list[TextIOWrapper] = []
     for f in args.input:
         flo_in.append(open(f, 'r'))
     
     # open output filehandles
-    flo_output = []
+    flo_output: list[TextIOWrapper] = []
     for f in args.output:
         flo_output.append(open(f, 'w'))
         
     # open bsp filehandles
-    flo_bsp = []
+    flo_bsp: list[TextIOWrapper] = []
     for f in args.bsp:
         flo_bsp.append(open(f, 'w'))
     
     # open fail filehandles
-    flo_fail = []
+    flo_fail: list[TextIOWrapper] = []
     for f in args.fail:
         flo_fail.append(open(f, 'w'))
     
     # create list to store pairs of sequence lines
-    quads = []
+    quads: list[list[str]] = []
     for i in range(len(flo_in)):
         quads.append([])
     
@@ -514,9 +516,9 @@ def main():
         else:
             # make sure the sequence headers are properly paired, otherwise exit
             if not check_pair(quads[0], quads[1]):
-                sys.stderr.write("headers not equal\n")
-                sys.stderr.write("quad1=" + str(quads[0][0]) + "\n")
-                sys.stderr.write("quad2=" + str(quads[1][0]) + "\n")
+                print("headers not equal:", file=sys.stderr)
+                print(f"quad1={quads[0][0]}", file=sys.stderr)
+                print(f"quad2={quads[1][0]}", file=sys.stderr)
                 sys.exit(1)
         
             # debarcode
@@ -525,17 +527,19 @@ def main():
         # print debarcoded sequences
         if new_quads[0]:
             for i, flo in enumerate(flo_output):
-                flo.write("\n".join(new_quads[i]) + "\n")
+                print("\n".join(new_quads[i]), file=flo)
             
             for i, flo in enumerate(flo_bsp):
-                flo.write("\n".join(bsp_quads[i]) + "\n")
+                print("\n".join(bsp_quads[i]), file=flo)
         else:
             for i, flo in enumerate(flo_fail):
-                flo.write("\n".join(quads[i]) + "\n")
+                print("\n".join(quads[i]), file=flo)
         
         # read in the next sequence from both input files
         for i in range(len(flo_in)):
             quads[i] = read_quad(flo_in[i])
+    
+    # File handles close automatically on program termination
 
 if (__name__ == '__main__'):
     main()
